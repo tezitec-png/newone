@@ -1,0 +1,15 @@
+{
+  "name": "rat-backend",
+  "version": "1.0.0",
+  "description": "Backend real para RAT con WebSockets",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.2",
+    "sqlite3": "^5.1.6",
+    "cors": "^2.8.5"
+  }
+}

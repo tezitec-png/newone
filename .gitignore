@@ -1,0 +1,3 @@
+node_modules/
+rats.db
+*.log
